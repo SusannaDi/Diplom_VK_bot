@@ -1,0 +1,2 @@
+# Здесь будут храниться токен, ID группы и другие настройки
+my_token = 'vk1.a.ZhDV9GQ-rLxnjHbFY9fGiZlFx7GdU6cKzeSMUVHGgJ0PRA1zOAn7dllnoFYytWF2NeJ7moUzh_mg6z7TveB8G7poWtyjCNs9m5QX9BxQc2jdLA20cEXnqNLTsXr3dbdmd1PIgytUXO1R82WJOmn8k-L68kiQKPgmRZzs5V9wvisLaFaw2BLGM5nQ8p99RyNRsvILa-jTIEgze2Ld3Pn-kw'

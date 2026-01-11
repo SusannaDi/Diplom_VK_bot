@@ -233,3 +233,6 @@ config.py
 # Файлы операционной системы
 .DS_Store
 Thumbs.db.idea/
+
+# IDE files
+.idea/

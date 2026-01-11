@@ -1,4 +1,4 @@
-# Здесь будут функции для работы с JSON-файлами
+# Здесь функции для работы с JSON-файлами
 
 import json
 import os
@@ -7,11 +7,9 @@ from datetime import datetime
 # Имя файла для хранения данных
 FAVORITES_FILE = 'favorites.json'
 
-
-def load_favorites():
-    """Загружает данные из файла favorites.json"""
+def load_favorites(): # Загружаем данные из файла favorites.json
     if not os.path.exists(FAVORITES_FILE):
-        return []
+        return [] # возвращаем пустой список
 
     try:
         with open(FAVORITES_FILE, 'r', encoding='utf-8') as file:
@@ -20,8 +18,7 @@ def load_favorites():
         return []
 
 
-def save_favorites(data):
-    """Сохраняет данные в файл favorites.json"""
+def save_favorites(data): # Сохраняем данные в файл favorites.json
     try:
         with open(FAVORITES_FILE, 'w', encoding='utf-8') as file:
             json.dump(data, file, ensure_ascii=False, indent=2)
@@ -31,12 +28,12 @@ def save_favorites(data):
 
 
 def add_to_favorites(user_data):
-    """Добавляет пользователя в избранное"""
-    # 1. Загружаем текущий список
-    favorites = load_favorites()
+    # Добавляем пользователя в избранное
 
-    # 2. Проверяем, нет ли уже такого пользователя по vk_id
-    user_id = user_data.get('vk_id')
+    favorites = load_favorites()   # 1. Загружаем текущий список
+
+
+    user_id = user_data.get('vk_id') # 2. Проверяем, нет ли уже такого пользователя по vk_id
     if not user_id:
         print("Ошибка: у пользователя нет vk_id!")
         return False
@@ -62,5 +59,5 @@ def add_to_favorites(user_data):
 
 
 def get_favorites():
-    """Возвращает список избранных пользователей"""
+    # Возвращает список избранных пользователей
     return load_favorites()

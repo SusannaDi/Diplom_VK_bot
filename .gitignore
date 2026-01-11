@@ -232,4 +232,4 @@ config.py
 
 # Файлы операционной системы
 .DS_Store
-Thumbs.db
+Thumbs.db.idea/

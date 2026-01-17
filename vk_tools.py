@@ -20,14 +20,27 @@ vk_user = vk_session_user.get_api()
 def get_user_info(user_id):
     """
     Получает информацию о пользователе для поиска.
+
+    Returns:
+        dict: {
+            'vk_id': int,
+            'first_name': str,
+            'last_name': str,
+            'profile_url': str,
+            'age': int или None,
+            'sex': int (1-жен, 2-муж, 0-не указан),
+            'city_id': int или None,
+            'city_title': str или None
+        }
     """
     try:
-        response = vk.users.get(
+        response = vk_user.users.get(
             user_ids=user_id,
             fields='sex,bdate,city,first_name,last_name'
         )
 
         if not response:
+            print(f"   Пользователь с ID {user_id} не найден")
             return None
 
         user = response[0]
@@ -42,75 +55,51 @@ def get_user_info(user_id):
         # Данные для поиска (возраст, пол, город)
         info['sex'] = user.get('sex', 0)
 
-        # ВОЗРАСТ - ИСПРАВЛЕННАЯ ЛОГИКА
+        # Возраст
         bdate = user.get('bdate', '')
-        info['age'] = None  # По умолчанию
+        info['age'] = None
 
         if bdate:
             parts = bdate.split('.')
-            # Проверяем, что есть год (3 части) и год - число
             if len(parts) == 3 and parts[2].isdigit():
                 birth_year = int(parts[2])
                 current_year = datetime.now().year
                 age = current_year - birth_year
-                # Проверяем, что возраст реалистичный
                 if 10 <= age <= 100:
                     info['age'] = age
-                    print(f"Возраст определён: {age} лет")
-                else:
-                    print(f"Нереалистичный возраст: {age} лет")
-            else:
-                print(f"Дата рождения без года или неполная: {bdate}")
-        else:
-            print("Дата рождения не указана")
+        # Убрали все отладочные print про возраст
 
         # Город
         if 'city' in user:
             info['city_id'] = user['city']['id']
             info['city_title'] = user['city']['title']
-            print(f"Город: {info['city_title']} (ID: {info['city_id']})")
         else:
             info['city_id'] = None
             info['city_title'] = None
-            print("Город не указан")
 
-        print(f"Пол: {info['sex']} (1-жен, 2-муж, 0-не указан)")
+        print(f" Получена информация о пользователе {user_id}")
         return info
 
     except Exception as e:
-        print(f"Ошибка в get_user_info: {e}")
+        print(f" Ошибка при получении информации о пользователе: {e}")
         return None
 
 
 def search_users(params, count=None):
     """
     Ищет пользователей ВКонтакте по критериям.
-
-    Args:
-        params (dict): словарь с параметрами:
-            - vk_id (int): ID пользователя, который ищет
-            - sex (int): 1-жен, 2-муж (пол того, кто ищет)
-            - age (int или None): возраст
-            - city_id (int или None): ID города
-        count (int или None): сколько пользователей искать
-
-    Returns:
-        list: список словарей с информацией о найденных пользователях
     """
     try:
-        # Импортируем настройки из config
         from config import DEFAULT_AGE_FROM, DEFAULT_AGE_TO, AGE_DELTA, SEARCH_COUNT
 
-        # Если count не указан, используем значение по умолчанию из config
         if count is None:
             count = SEARCH_COUNT
 
-        # Параметры для поиска
         search_params = {
-            'count': min(count, 1000),  # VK ограничивает 1000 результатов
+            'count': min(count * 3, 1000),  # Ищем больше, потом отфильтруем
             'fields': 'sex,city,bdate,is_closed,can_access_closed,has_photo',
-            'has_photo': 1,  # только с фотографией
-            'status': 1,  # не женат/не замужем
+            'has_photo': 1,
+            'status': 1,
         }
 
         # 1. ПОЛ: ищем противоположный пол
@@ -129,23 +118,19 @@ def search_users(params, count=None):
             search_params['age_from'] = DEFAULT_AGE_FROM
             search_params['age_to'] = DEFAULT_AGE_TO
 
-        # 3. ГОРОД: если город известен, ищем в нём
         city_id = params.get('city_id')
-        if city_id:
-            search_params['city'] = city_id
 
-        print(f"🔍 Параметры поиска: возраст {search_params.get('age_from')}-{search_params.get('age_to')}, "
-              f"пол {search_params.get('sex', 'любой')}, город ID {city_id or 'любой'}")
+        print(f"🔍 Ищем пользователей...")
 
         # Выполняем поиск
         response = vk_user.users.search(**search_params)
 
         if not response or 'items' not in response:
-            print("❌ Не удалось выполнить поиск")
+            print("    Не удалось выполнить поиск")
             return []
 
         users = response['items']
-        print(f"📊 Найдено {len(users)} пользователей")
+        print(f"    Найдено {len(users)} пользователей")
 
         # Фильтруем результаты
         filtered_users = []
@@ -163,6 +148,12 @@ def search_users(params, count=None):
             user_vk_id = params.get('vk_id')
             if user_vk_id and str(user.get('id')) == str(user_vk_id):
                 continue
+
+            # ФИЛЬТРАЦИЯ ПО ГОРОДУ (если город указан)
+            if city_id:
+                user_city = user.get('city', {}).get('id')
+                if user_city != city_id:
+                    continue  # Пропускаем, если город не совпадает
 
             # Формируем информацию о пользователе
             user_info = {
@@ -191,37 +182,30 @@ def search_users(params, count=None):
 
             filtered_users.append(user_info)
 
-        print(f"✅ После фильтрации осталось {len(filtered_users)} пользователей")
+        print(f"    После фильтрации: {len(filtered_users)} пользователей")
+        if city_id:
+            print(f"      (только город ID: {city_id})")
 
-        # Перемешиваем список для разнообразия
+        # Перемешиваем список
         random.shuffle(filtered_users)
 
         return filtered_users[:count]
 
-    except Exception as e:
-        print(f"❌ Ошибка при поиске пользователей: {e}")
+    except Exception as e:  # ← ВАЖНО: закрываем try блок
+        print(f" Ошибка при поиске пользователей: {e}")
         return []
 
 
 def get_top_photos(user_id, count=3):
     """
     Получает самые популярные фотографии пользователя.
-
-    Args:
-        user_id (int): ID пользователя ВКонтакте
-        count (int): сколько фотографий возвращать
-
-    Returns:
-        list: список фотографий в формате для attachments:
-            ['photo{owner_id}_{photo_id}', ...]
     """
     try:
-        # Используем настройку из config
         from config import PHOTOS_COUNT
         if count is None:
             count = PHOTOS_COUNT
 
-        print(f"📸 Запрашиваем {count} фото пользователя {user_id}...")
+        print(f"    Запрашиваем фото пользователя {user_id}...")
 
         response = vk_user.photos.get(
             owner_id=user_id,
@@ -232,11 +216,13 @@ def get_top_photos(user_id, count=3):
         )
 
         if not response or 'items' not in response:
-            print(f"   У пользователя {user_id} нет фотографий")
+            print(f"      У пользователя {user_id} нет фотографий в профиле")
             return []
 
         photos = response['items']
-        print(f"   Найдено {len(photos)} фотографий")
+
+        if not photos:
+            return []
 
         # Сортируем по лайкам
         photos_sorted = sorted(
@@ -254,18 +240,13 @@ def get_top_photos(user_id, count=3):
             attachment_str = f"photo{photo['owner_id']}_{photo['id']}"
             attachments.append(attachment_str)
 
-            likes = photo.get('likes', {}).get('count', 0)
-            print(f"   Фото {photo['id']}: {likes} лайков")
-
-        print(f"✅ Отобрано {len(attachments)} самых популярных фотографий")
+        print(f"       Отобрано {len(attachments)} фото")
         return attachments
 
     except vk_api.exceptions.VkApiError as e:
-        if 'Access denied' in str(e):
-            print(f"   Профиль пользователя {user_id} закрыт")
-        else:
-            print(f"   Ошибка VK API: {e}")
+        if 'Access denied' in str(e) or 'Privacy' in str(e):
+            print(f"      Профиль пользователя {user_id} закрыт")
         return []
     except Exception as e:
-        print(f"   Ошибка при получении фото: {e}")
+        print(f"      Ошибка при получении фото: {e}")
         return []

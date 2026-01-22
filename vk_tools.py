@@ -2,9 +2,21 @@
 
 import vk_api
 from vk_api.exceptions import VkApiError
-from config import VK_GROUP_TOKEN, VK_USER_TOKEN, VK_API_VERSION
+from config import (
+    VK_GROUP_TOKEN,
+    VK_USER_TOKEN,
+    VK_API_VERSION,
+    DEFAULT_AGE_FROM,
+    DEFAULT_AGE_TO,
+    AGE_DELTA,
+    SEARCH_COUNT,
+    PHOTOS_COUNT
+)
 import random
 from datetime import datetime
+
+import requests
+import socket
 
 # Две сессии VK API:
 # 1. Для работы бота (групповой токен)
@@ -67,7 +79,13 @@ def get_user_info(user_id):
                 age = current_year - birth_year
                 if 10 <= age <= 100:
                     info['age'] = age
-        # Убрали все отладочные print про возраст
+                    print(f"Возраст определён: {age} лет")
+                else:
+                    print(f"Нереалистичный возраст в профиле: {age} лет")
+            else:
+                print(f"Дата рождения указана без года: '{bdate}'")
+        else:
+            print(f"Дата рождения не указана в профиле")
 
         # Город
         if 'city' in user:
@@ -80,8 +98,21 @@ def get_user_info(user_id):
         print(f" Получена информация о пользователе {user_id}")
         return info
 
+
+    except vk_api.exceptions.VkApiError as e:
+        print(f"Ошибка VK API [{e.code}]: {e.message}")
+        return None
+    except requests.exceptions.Timeout:
+        print("Таймаут при запросе к VK API (слишком долгий ответ)")
+        return None
+    except requests.exceptions.ConnectionError:
+        print("Ошибка соединения с VK API (проверьте интернет)")
+        return None
+    except socket.error as e:
+        print(f"Сетевая ошибка: {e}")
+        return None
     except Exception as e:
-        print(f" Ошибка при получении информации о пользователе: {e}")
+        print(f"Неизвестная ошибка при получении информации: {e}")
         return None
 
 
@@ -90,7 +121,6 @@ def search_users(params, count=None):
     Ищет пользователей ВКонтакте по критериям.
     """
     try:
-        from config import DEFAULT_AGE_FROM, DEFAULT_AGE_TO, AGE_DELTA, SEARCH_COUNT
 
         if count is None:
             count = SEARCH_COUNT
@@ -111,6 +141,21 @@ def search_users(params, count=None):
 
         # 2. ВОЗРАСТ: если возраст известен, ищем ±AGE_DELTA лет
         user_age = params.get('age')
+
+        if user_age is None:
+            print(f"Возраст пользователя не указан, использую диапазон по умолчанию: {DEFAULT_AGE_FROM}-{DEFAULT_AGE_TO} лет")
+            search_params['age_from'] = DEFAULT_AGE_FROM
+            search_params['age_to'] = DEFAULT_AGE_TO
+        elif isinstance(user_age, int):
+            print(f"Возраст пользователя: {user_age} лет, ищем ±{AGE_DELTA} лет")
+            search_params['age_from'] = max(DEFAULT_AGE_FROM, user_age - AGE_DELTA)
+            search_params['age_to'] = min(DEFAULT_AGE_TO, user_age + AGE_DELTA)
+        else:
+            print(f"Некорректный возраст: {user_age}, использую диапазон по умолчанию")
+            search_params['age_from'] = DEFAULT_AGE_FROM
+            search_params['age_to'] = DEFAULT_AGE_TO
+
+
         if user_age and isinstance(user_age, int):
             search_params['age_from'] = max(DEFAULT_AGE_FROM, user_age - AGE_DELTA)
             search_params['age_to'] = min(DEFAULT_AGE_TO, user_age + AGE_DELTA)
@@ -201,12 +246,9 @@ def get_top_photos(user_id, count=3):
     Получает самые популярные фотографии пользователя.
     """
     try:
-        from config import PHOTOS_COUNT
         if count is None:
             count = PHOTOS_COUNT
-
         print(f"    Запрашиваем фото пользователя {user_id}...")
-
         response = vk_user.photos.get(
             owner_id=user_id,
             album_id='profile',
@@ -214,39 +256,46 @@ def get_top_photos(user_id, count=3):
             count=100,
             rev=1
         )
-
         if not response or 'items' not in response:
             print(f"      У пользователя {user_id} нет фотографий в профиле")
             return []
-
         photos = response['items']
-
         if not photos:
             return []
-
         # Сортируем по лайкам
         photos_sorted = sorted(
             photos,
             key=lambda x: x.get('likes', {}).get('count', 0),
             reverse=True
         )
-
         # Берем топ-N
         top_photos = photos_sorted[:count]
-
         # Формируем attachments
         attachments = []
         for photo in top_photos:
             attachment_str = f"photo{photo['owner_id']}_{photo['id']}"
             attachments.append(attachment_str)
-
         print(f"       Отобрано {len(attachments)} фото")
         return attachments
 
     except vk_api.exceptions.VkApiError as e:
+        # Специфические ошибки VK API для фото
         if 'Access denied' in str(e) or 'Privacy' in str(e):
-            print(f"      Профиль пользователя {user_id} закрыт")
+            print(f"Профиль пользователя {user_id} закрыт")
+        elif e.code == 6 or e.code == 9:
+            print(f"Лимит запросов фото. Пропускаем.")
+        else:
+            print(f"Ошибка VK API при получении фото [{e.code}]: {e.message}")
+        return []
+    except requests.exceptions.Timeout:
+        print(f"Таймаут при получении фото пользователя {user_id}")
+        return []
+    except requests.exceptions.ConnectionError:
+        print(f"Ошибка соединения при получении фото")
+        return []
+    except socket.error as e:
+        print(f"Сетевая ошибка при получении фото: {e}")
         return []
     except Exception as e:
-        print(f"      Ошибка при получении фото: {e}")
+        print(f"Неизвестная ошибка при получении фото: {e}")
         return []

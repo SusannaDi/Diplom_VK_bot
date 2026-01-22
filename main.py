@@ -13,6 +13,7 @@ import vk_tools
 from config import VK_GROUP_TOKEN, VK_API_VERSION, GROUP_ID
 import user_states
 from keyboards import get_main_keyboard, get_search_keyboard, get_empty_keyboard
+import requests
 
 def main():
     """Основная функция бота"""
@@ -124,8 +125,15 @@ def send_message(vk, user_id, message, attachments=None, keyboard=None):
         vk.messages.send(**params)
         print(f" Отправлено сообщение пользователю {user_id}")
 
+
+    except vk_api.exceptions.VkApiError as e:
+        print(f"Ошибка VK API при отправке сообщения [{e.code}]: {e.message}")
+    except requests.exceptions.Timeout:
+        print(f"Таймаут при отправке сообщения пользователю {user_id}")
+    except requests.exceptions.ConnectionError:
+        print(f"Ошибка соединения при отправке сообщения")
     except Exception as e:
-        print(f" Ошибка при отправке сообщения: {e}")
+        print(f"Неизвестная ошибка при отправке сообщения: {e}")
 
 
 # поиск людей
@@ -144,6 +152,17 @@ def start_search(vk, user_id):
         message = " Не удалось получить вашу информацию. Проверьте, открыт ли ваш профиль."
         send_message(vk, user_id, message, keyboard=get_main_keyboard())
         return
+
+    if user_info['age'] is None:
+        age_message = (
+            "Ваш возраст не указан в профиле ВКонтакте.\n"
+            "Буду искать людей от 18 до 45 лет.\n\n"
+            "Для более точного поиска укажите возраст в настройках профиля ВК."
+        )
+        send_message(vk, user_id, age_message, keyboard=get_search_keyboard())
+        print(f"Возраст пользователя {user_id} не указан, использую диапазон по умолчанию")
+    else:
+        print(f"Возраст пользователя {user_id}: {user_info['age']} лет")
 
     # Сообщаем о прогрессе
     message = f" Получена информация. Ищу людей в {user_info.get('city_title', 'вашем городе')}..."
